@@ -1,0 +1,179 @@
+---
+title: "p8130_hw4"
+author: "Catherine"
+date: "11/11/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(kableExtra)
+library(patchwork)
+```
+For this problem, you will be using data ‘HeartDisease.csv’. The investigator is mainly interested if there is an association between ‘total cost’ (in dollars) of patients diagnosed with heart disease and the ‘number of emergency room (ER) visits’. Further, the model will need to be adjusted for other factors, including ‘age’, ‘gender’, ‘number of complications’ that arose during treatment, and ‘duration of treatment condition’.
+
+
+
+e) Fit a multiple linear regression (MLR) with ‘comp_bin’ and ‘ERvisits’ as predictors.
+i) Test if ‘comp_bin’ is an effect modifier of the relationship between ‘total cost’ and ‘ERvisits’. Comment. (2p)
+ii)Test if ‘comp_bin’ is a confounder of the relationship between ‘total cost’ and ‘ERvisits’. Comment. (2p)
+iii) Decide if ‘comp_bin’ should be included along with ‘ERvisits. Why or why not? (1p)
+
+### Problem 2
+
+#### a) 
+
+Provide a short description of the data set: what is the main outcome, main predictor and other important covariates. Also, generate appropriate descriptive statistics for all variables of interest (continuous and categorical) – no test required. 
+
+```{r p2 data import}
+hd_data = read.csv("./data/HeartDisease.csv") 
+hd_gender = hd_data %>% 
+  select(gender)  
+hd_num = hd_data %>% 
+  select(-gender)
+```
+
+__Description__ : 
+
+There are `r nrow(hd_data)` observations and `r ncol(hd_data)` variables in the dataset.
+
+Variables include: `r names(hd_data)`
+
+* `id` : patient identification number
+* `totalcost`: total cost (in dollars) of patients diagnosed with heart disease
+* `age` : the age of patient
+* `gender` : the gender of patient, 
+* `intervetions` : number of interventions for a patient
+* `drugs` : number of drugs a patient took
+* `ERvisits` : number of emergency room visits
+* `complications` : number of complications
+* `comorbidities` : number of comorbidities
+* `duration` : duration of treatment condition
+
+The main outcome is `totalcost` and the main predictor is `ERvisits`. 
+
+Other important covariates includes `age`, `gender`, `complications`, and `duration`.
+
+__Look at the data__
+
+* `gender` is a categorical variable
+
+```{r categorical variable summery}
+skimr::skim_to_wide(hd_gender) %>% knitr::kable() %>% kable_styling()
+
+table(hd_gender) %>% prop.table() %>% knitr::kable() %>% kable_styling(full_width = F, position = "left")
+```
+
+From the tables above, we can know the distribution between two gender catagories is uneven. More than 77% of the patients are in the catagory of `0`. Further information about what gender `0` and `1` represent is needed in order to know which gender is under-represented in the dataset.
+
+* There 9 continuous variables, which are presented in the table below: 
+
+```{r continuous variables summery}
+skimr::skim_to_wide(hd_num) %>% knitr::kable() %>% kable_styling()
+```
+
+From the table above, 
+
+There are no missing value for all variables. 
+
+`age` is shown left skewed in the `hist` column. The mean of age is __60__ and the first quartile is __55__, which reflects that young people are under-represented in the dataset. It is better to use `p50`(medium) to describe age. 
+
+`complication` is shown right skewed. Over 75% of patients have __0__ complication. The Maximun is __3__, which may be an outlier. Further investigation is needed. 
+
+`duration` has no significant skewed. Mean  The interquartile range is __(41.75, 281)__, which means most of the patients have duration between 42 to 281 days.
+
+`ERvisits` is shown right skewed. The interquartile range is __(2, 5)__, which means most of the patients have 2 to 5 visits. We better use `p50`(medium) to describe the data. 
+
+`totalcost` is shown right skewed with a large`sd`. The `mean` is affected by extreme value, so we better use `p50`(medium) or interquartile range to describe the data. 
+
+#### b) 
+
+Investigate the shape of the distribution for variable ‘total cost’.
+
+```{r totalcost distribution}
+tc_hist = hd_data %>% 
+  ggplot(aes(x = totalcost)) +
+  geom_histogram(bins = 30)
+tc_hist
+
+tc_qq = hd_data %>% 
+  ggplot(aes(sample = totalcost)) +
+  geom_qq()
+tc_qq
+```
+
+Let's try different transformations.
+
+```{r totalcost transformation}
+totalcost_trans = hd_data %>% 
+  mutate(totalcost, log_totalcost = log(totalcost)) 
+totalcost_trans$log_totalcost[is.infinite(totalcost_trans$log_totalcost)] = 0
+
+tc_trans_hist = totalcost_trans %>% 
+  ggplot(aes(x = log_totalcost)) +
+  geom_histogram(bins = 30)
+tc_trans_hist
+
+tc_trans_qq = totalcost_trans %>% 
+  ggplot(aes(sample = log_totalcost)) +
+  geom_qq() +
+   labs(x = "theoretical (after transformation)")
+tc_trans_qq
+```
+
+Compare before and after transformation
+
+```{r}
+tc_hist + tc_trans_hist
+
+tc_qq + tc_trans_qq
+```
+
+__Comments__
+
+After transformation, we can see the distribution of `log_totalcost` is approximate normal distribution. Therefore, transformation is needed. 
+
+#### c) 
+
+Create a new variable called ‘comp_bin’ by dichotomizing ‘complications’: 0 if no complications, and 1 otherwise. 
+
+```{r new variable comp_bin}
+hd_nv = hd_data %>% 
+  mutate(comp_bin = ifelse(complications == 0, 0, 1))
+```
+
+#### d) 
+
+Based on our decision in part b), fit a simple linear regression (SLR) between the original or transformed ‘total cost’ and predictor ‘ERvisits’. This includes a scatterplot and results of the regression, with appropriate comments on significance and interpretation of the slope. (5p)
+
+__fit simple linear model__
+
+In the regression model $Y_{i} = \beta_0 + \beta_{1}X_{i} + \epsilon_{i}$, $Y_{i}$ is tranformed to $logY_{i}$. 
+
+Then, the function becomes $logY_{i} = \beta_0 + \beta_{i}X_{i} + \epsilon_{i}$, where
+
+$logY_{i}$ is `log_totalcost`. 
+
+$X_{i}$ is predictor `ERvisits`.
+
+$\epsilon_{i} \sim N(0, \sigma^2)$ as the distribution of `log_totalcost` is approximate normal distribution.
+
+```{r slr}
+# fit the model
+fit = lm(log_totalcost ~ ERvisits, data = totalcost_trans)
+# look at the coef
+summary(fit)$coef %>% knitr::kable() %>% kable_styling()
+# scatter plot
+totalcost_trans %>% 
+  ggplot(aes(x = ERvisits, y = log_totalcost)) +
+  geom_point(alpha = .5)
+```
+
+From the table above, 
+
+$\beta_0 = 5.517, \beta_{i} = 0.226$ 
+
+The result of regression is 
+
+$logY_{i} = 5.517 + 0.226X_{i}$
