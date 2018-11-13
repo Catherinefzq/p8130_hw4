@@ -10,21 +10,14 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(kableExtra)
 library(patchwork)
+library(broom)
 ```
-For this problem, you will be using data ‘HeartDisease.csv’. The investigator is mainly interested if there is an association between ‘total cost’ (in dollars) of patients diagnosed with heart disease and the ‘number of emergency room (ER) visits’. Further, the model will need to be adjusted for other factors, including ‘age’, ‘gender’, ‘number of complications’ that arose during treatment, and ‘duration of treatment condition’.
-
-
-
-e) Fit a multiple linear regression (MLR) with ‘comp_bin’ and ‘ERvisits’ as predictors.
-i) Test if ‘comp_bin’ is an effect modifier of the relationship between ‘total cost’ and ‘ERvisits’. Comment. (2p)
-ii)Test if ‘comp_bin’ is a confounder of the relationship between ‘total cost’ and ‘ERvisits’. Comment. (2p)
-iii) Decide if ‘comp_bin’ should be included along with ‘ERvisits. Why or why not? (1p)
 
 ### Problem 2
 
-#### a) 
+For this problem, you will be using data ‘HeartDisease.csv’. The investigator is mainly interested if there is an association between ‘total cost’ (in dollars) of patients diagnosed with heart disease and the ‘number of emergency room (ER) visits’. Further, the model will need to be adjusted for other factors, including ‘age’, ‘gender’, ‘number of complications’ that arose during treatment, and ‘duration of treatment condition’.
 
-Provide a short description of the data set: what is the main outcome, main predictor and other important covariates. Also, generate appropriate descriptive statistics for all variables of interest (continuous and categorical) – no test required. 
+#### a) Provide a short description of the data set: what is the main outcome, main predictor and other important covariates. Also, generate appropriate descriptive statistics for all variables of interest (continuous and categorical) – no test required. 
 
 ```{r p2 data import}
 hd_data = read.csv("./data/HeartDisease.csv") 
@@ -87,9 +80,7 @@ There are no missing value for all variables.
 
 `totalcost` is shown right skewed with a large`sd`. The `mean` is affected by extreme value, so we better use `p50`(medium) or interquartile range to describe the data. 
 
-#### b) 
-
-Investigate the shape of the distribution for variable ‘total cost’.
+#### b) Investigate the shape of the distribution for variable ‘total cost’.
 
 ```{r totalcost distribution}
 tc_hist = hd_data %>% 
@@ -134,46 +125,97 @@ __Comments__
 
 After transformation, we can see the distribution of `log_totalcost` is approximate normal distribution. Therefore, transformation is needed. 
 
-#### c) 
-
-Create a new variable called ‘comp_bin’ by dichotomizing ‘complications’: 0 if no complications, and 1 otherwise. 
+#### c) Create a new variable called ‘comp_bin’ by dichotomizing ‘complications’: 0 if no complications, and 1 otherwise. 
 
 ```{r new variable comp_bin}
-hd_nv = hd_data %>% 
-  mutate(comp_bin = ifelse(complications == 0, 0, 1))
+hd_nv = totalcost_trans %>% 
+  mutate(comp_bin = ifelse(complications == 0, 0, 1)) %>% 
+  mutate(comp_bin, comp_bin = as.factor(comp_bin))
 ```
 
-#### d) 
-
-Based on our decision in part b), fit a simple linear regression (SLR) between the original or transformed ‘total cost’ and predictor ‘ERvisits’. This includes a scatterplot and results of the regression, with appropriate comments on significance and interpretation of the slope. (5p)
+#### d) Based on our decision in part b), fit a simple linear regression (SLR) between the original or transformed ‘total cost’ and predictor ‘ERvisits’. This includes a scatterplot and results of the regression, with appropriate comments on significance and interpretation of the slope. 
 
 __fit simple linear model__
 
-In the regression model $Y_{i} = \beta_0 + \beta_{1}X_{i} + \epsilon_{i}$, $Y_{i}$ is tranformed to $logY_{i}$. 
+We transformed $Y_{i}$ to $logY_{i}$. 
 
-Then, the function becomes $logY_{i} = \beta_0 + \beta_{i}X_{i} + \epsilon_{i}$, where
+Then, the regression model becomes $logY_{i} = \beta_0^* + \beta_{1}X_{i} + \epsilon_{i}^*$
 
-$logY_{i}$ is `log_totalcost`. 
-
-$X_{i}$ is predictor `ERvisits`.
-
-$\epsilon_{i} \sim N(0, \sigma^2)$ as the distribution of `log_totalcost` is approximate normal distribution.
 
 ```{r slr}
-# fit the model
+# simple linear regression
 fit = lm(log_totalcost ~ ERvisits, data = totalcost_trans)
-# look at the coef
-summary(fit)$coef %>% knitr::kable() %>% kable_styling()
-# scatter plot
+# analyze the result
+summary(fit)
+glance(fit)$sigma
+# scatter plot 
+# plot(totalcost_trans$ERvisits, totalcost_trans$log_totalcost)
+# abline(fit,lwd=2,col=2)
 totalcost_trans %>% 
   ggplot(aes(x = ERvisits, y = log_totalcost)) +
-  geom_point(alpha = .5)
+  geom_point(alpha = .5) +
+  geom_smooth(method = "lm", se = FALSE)
 ```
 
-From the table above, 
+From the table above,  
 
-$\beta_0 = 5.517, \beta_{i} = 0.226$ 
+$\hat{\beta_0^*} = 5.517, \hat{\beta_{1}} = 0.226$ 
 
-The result of regression is 
+The estimate regression model is 
 
-$logY_{i} = 5.517 + 0.226X_{i}$
+$\hat{logY_{i}} = 5.517 + 0.226X_{i}$ 
+
+__Comments__: There is an increase of 0.226 in logarithm of total cost for every Emergency Room visit. When there is no Emergency Room visit which is `0` in `ERvisit`, the logarithm of total cost is 5.517. 
+
+#### e) Fit a multiple linear regression (MLR) with ‘comp_bin’ and ‘ERvisits’ as predictors.
+
+#### i) Test if ‘comp_bin’ is an effect modifier of the relationship between ‘total cost’ and ‘ERvisits’. Comment. 
+
+Make a plot of regression model with variables `ERvisits` and `comp_bin`.
+
+```{r}
+hd_nv %>% 
+  ggplot(aes(x = ERvisits, y = log_totalcost, color = comp_bin)) +
+  geom_point(alpha = .5) +
+  geom_smooth(method = "lm", se = FALSE) 
+```
+
+__Comment__
+
+From the plot above, the blue line and the red line are not parallel, which means that `comp_bin` is an effect modifier of the relationship between `totalcost` and `ERvisits`.
+
+The effect of `comp_bin` and the effect of `ERvisits` are dependent on one another. They do not act independently on `totalcost`.
+
+#### ii) Test if ‘comp_bin’ is a confounder of the relationship between ‘total cost’ and ‘ERvisits’. Comment. 
+
+
+From question d), we got the SLR model of `log_totalcost` and `ERvisits`, which is 
+$\hat{logY_{i}} = 5.517 + 0.226X_{i}$
+
+Let compute the parameter estimate for which adjust for `ERvisits` which adjusts for potential confounder `comp_bin`.
+
+```{r}
+fit2 = lm(log_totalcost ~ ERvisits + comp_bin, data = hd_nv)
+summary(fit)$coef %>% knitr::kable() %>% kable_styling()
+summary(fit2)$coef %>% knitr::kable() %>% kable_styling()
+(0.226 - 0.203)/0.226
+```
+Then, calculate the percentage change in the parameter estimate
+
+$\frac{\mid\beta_{crude} - \beta_{adjusted}\mid}{\mid\beta_{crude}\mid} = \frac{\mid0.226 - 0.203\mid}{\mid0.226\mid} = 0.1017699 \approx 10.18%$
+
+__Conclusion__
+
+According to 10% rule of thumb, since the percentage change is 10.18%, which is slightly greater than 10%, indicates that the association between `log_totalcost` and `ERvisits` may be influenced by `comp_bin` but the confounding effect is not that strong. 
+
+
+#### iii) Decide if ‘comp_bin’ should be included along with ‘ERvisits. Why or why not? 
+
+__Answer__
+
+Based on the investigation aboved, `comp_bin` an effect modifier of the relationship between `totalcost` and `ERvisits`. Compared to a patient wihout complication (`comp_bin` = `0`), the change of total cost for a patient with complication (`comp_bin` = `1`) are not so sensitive affected by ERvisits, as it's resonable to think that the cost for these patients is already higher than patients without complications. 
+
+Also, `comp_bin` is a potential confounder for the relationship, as the parameter estimate percentage change slightly over 10%. Therefore, we need to include `comp_bin` along with `ERvisits`.
+
+
+
