@@ -6,11 +6,12 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width = 10)
 library(tidyverse)
 library(kableExtra)
 library(patchwork)
 library(broom)
+library(faraway)
 ```
 
 ### Problem 2
@@ -63,7 +64,7 @@ From the tables above, we can know the distribution between two gender catagorie
 * There 9 continuous variables, which are presented in the table below: 
 
 ```{r continuous variables summery}
-skimr::skim_to_wide(hd_num) %>% knitr::kable() %>% kable_styling()
+skimr::skim_to_wide(hd_num) %>% kable() %>% kable_styling()
 ```
 
 From the table above, 
@@ -86,36 +87,38 @@ There are no missing value for all variables.
 tc_hist = hd_data %>% 
   ggplot(aes(x = totalcost)) +
   geom_histogram(bins = 30)
-tc_hist
+
 
 tc_qq = hd_data %>% 
   ggplot(aes(sample = totalcost)) +
   geom_qq()
-tc_qq
+
 ```
 
 Let's try different transformations.
 
 ```{r totalcost transformation}
 totalcost_trans = hd_data %>% 
-  mutate(totalcost, log_totalcost = log(totalcost)) 
-totalcost_trans$log_totalcost[is.infinite(totalcost_trans$log_totalcost)] = 0
+  mutate(totalcost, log_totalcost = log(totalcost + 1)) 
 
 tc_trans_hist = totalcost_trans %>% 
   ggplot(aes(x = log_totalcost)) +
   geom_histogram(bins = 30)
-tc_trans_hist
+
 
 tc_trans_qq = totalcost_trans %>% 
   ggplot(aes(sample = log_totalcost)) +
   geom_qq() +
    labs(x = "theoretical (after transformation)")
-tc_trans_qq
+
 ```
+
+_Notes_: As we have three `0` observations in variable `totalcost`, we transform the `totalcost` with $log (x+1)$.
 
 Compare before and after transformation
 
 ```{r}
+
 tc_hist + tc_trans_hist
 
 tc_qq + tc_trans_qq
@@ -129,8 +132,7 @@ After transformation, we can see the distribution of `log_totalcost` is approxim
 
 ```{r new variable comp_bin}
 hd_nv = totalcost_trans %>% 
-  mutate(comp_bin = ifelse(complications == 0, 0, 1)) %>% 
-  mutate(comp_bin, comp_bin = as.factor(comp_bin))
+  mutate(comp_bin = ifelse(complications == 0, 0, 1)) 
 ```
 
 #### d) Based on our decision in part b), fit a simple linear regression (SLR) between the original or transformed ‘total cost’ and predictor ‘ERvisits’. This includes a scatterplot and results of the regression, with appropriate comments on significance and interpretation of the slope. 
@@ -142,15 +144,20 @@ We transformed $Y_{i}$ to $logY_{i}$.
 Then, the regression model becomes $logY_{i} = \beta_0^* + \beta_{1}X_{i} + \epsilon_{i}^*$
 
 
-```{r slr}
-# simple linear regression
+```{r slr, fig.height = 10}
+# simple linear regression after transformation
 fit = lm(log_totalcost ~ ERvisits, data = totalcost_trans)
+par(mfrow=c(2,2))
+plot(fit)
+
 # analyze the result
 summary(fit)
 glance(fit)$sigma
+
+```
+
+```{r}
 # scatter plot 
-# plot(totalcost_trans$ERvisits, totalcost_trans$log_totalcost)
-# abline(fit,lwd=2,col=2)
 totalcost_trans %>% 
   ggplot(aes(x = ERvisits, y = log_totalcost)) +
   geom_point(alpha = .5) +
@@ -159,13 +166,13 @@ totalcost_trans %>%
 
 From the table above,  
 
-$\hat{\beta_0^*} = 5.517, \hat{\beta_{1}} = 0.226$ 
+$\hat{\beta_0^*} = 5.527, \hat{\beta_{1}} = 0.225$ 
 
 The estimate regression model is 
 
-$\hat{logY_{i}} = 5.517 + 0.226X_{i}$ 
+$\hat{logY_{i}} = 5.527 + 0.225X_{i}$ 
 
-__Comments__: There is an increase of 0.226 in logarithm of total cost for every Emergency Room visit. When there is no Emergency Room visit which is `0` in `ERvisit`, the logarithm of total cost is 5.517. 
+__Comments__: There is an increase of 0.225 in logarithm of total cost for every Emergency Room visit. When there is no Emergency Room visit which is `0` in `ERvisit`, the logarithm of total cost is 5.527. 
 
 #### e) Fit a multiple linear regression (MLR) with ‘comp_bin’ and ‘ERvisits’ as predictors.
 
@@ -173,8 +180,11 @@ __Comments__: There is an increase of 0.226 in logarithm of total cost for every
 
 Make a plot of regression model with variables `ERvisits` and `comp_bin`.
 
+__multi linear regression__
+
 ```{r}
 hd_nv %>% 
+  mutate(comp_bin, comp_bin = as.factor(comp_bin)) %>% 
   ggplot(aes(x = ERvisits, y = log_totalcost, color = comp_bin)) +
   geom_point(alpha = .5) +
   geom_smooth(method = "lm", se = FALSE) 
@@ -190,24 +200,32 @@ The effect of `comp_bin` and the effect of `ERvisits` are dependent on one anoth
 
 
 From question d), we got the SLR model of `log_totalcost` and `ERvisits`, which is 
-$\hat{logY_{i}} = 5.517 + 0.226X_{i}$
+$\hat{logY_{i}} = 5.527 + 0.225X_{i}$
 
 Let compute the parameter estimate for which adjust for `ERvisits` which adjusts for potential confounder `comp_bin`.
 
-```{r}
-fit2 = lm(log_totalcost ~ ERvisits + comp_bin, data = hd_nv)
-summary(fit)$coef %>% knitr::kable() %>% kable_styling()
-summary(fit2)$coef %>% knitr::kable() %>% kable_styling()
-(0.226 - 0.203)/0.226
+```{r, fig.height = 10}
+fit_multi = lm(log_totalcost ~ ERvisits + comp_bin, data = hd_nv)
+
+
+par(mfrow=c(2,2))
+plot(fit_multi)
+
+vif(fit_multi)
+
+summary(fit)
+summary(fit_multi)
+(0.225 - 0.203)/0.225
 ```
 Then, calculate the percentage change in the parameter estimate
 
-$\frac{\mid\beta_{crude} - \beta_{adjusted}\mid}{\mid\beta_{crude}\mid} = \frac{\mid0.226 - 0.203\mid}{\mid0.226\mid} = 0.1017699 \approx 10.18%$
+$\frac{\mid\beta_{crude} - \beta_{adjusted}\mid}{\mid\beta_{crude}\mid} = \frac{\mid0.225 - 0.203\mid}{\mid0.225\mid} = 0.09777778 \approx 9.78\%$
 
 __Conclusion__
 
-According to 10% rule of thumb, since the percentage change is 10.18%, which is slightly greater than 10%, indicates that the association between `log_totalcost` and `ERvisits` may be influenced by `comp_bin` but the confounding effect is not that strong. 
+From the $VIF(\hat\beta_{i})$ of `ERvisits` and `comp_bin`, we can conclude that the multicollinearity is low.
 
+According to 10% rule of thumb, since the percentage change is 9.78%, which is lower than 10%, indicates that the association between `log_totalcost` and `ERvisits` may not be influenced by `comp_bin`.
 
 #### iii) Decide if ‘comp_bin’ should be included along with ‘ERvisits. Why or why not? 
 
@@ -215,7 +233,79 @@ __Answer__
 
 Based on the investigation aboved, `comp_bin` an effect modifier of the relationship between `totalcost` and `ERvisits`. Compared to a patient wihout complication (`comp_bin` = `0`), the change of total cost for a patient with complication (`comp_bin` = `1`) are not so sensitive affected by ERvisits, as it's resonable to think that the cost for these patients is already higher than patients without complications. 
 
-Also, `comp_bin` is a potential confounder for the relationship, as the parameter estimate percentage change slightly over 10%. Therefore, we need to include `comp_bin` along with `ERvisits`.
+By adding `comp_bin`, the `Adjusted R-squared` increased from `0.09729` in `fit` to `0.1361` in `fit_multi`.
 
+Also, `comp_bin` is not presented as a problematic confounder for `ERvisits`. 
 
+Therefore, we need to include `comp_bin` along with `ERvisits`.
 
+#### f) Use your choice of model in part e) and add additional covariates (age, gender, and duration of treatment).
+
+#### i) Fit a MLR, show the regression results and comment.
+
+```{r}
+# Fit a simple linear regression 
+fit = lm(log_totalcost ~ ERvisits, data = totalcost_trans)
+summary(fit)
+
+# Fit a linear regression with comp_bin
+fit_multi = lm(log_totalcost ~ ERvisits + comp_bin, data = hd_nv)
+summary(fit_multi)
+
+# Fit a linear regression with comp_bin and age
+fit_multi1 = lm(log_totalcost ~ ERvisits + comp_bin + age, data = hd_nv)
+summary(fit_multi1)
+
+# Fit a linear regression with comp_bin and gender
+fit_multi2 = lm(log_totalcost ~ ERvisits + comp_bin + gender, data = hd_nv)
+summary(fit_multi2)
+
+# Fit a linear regression with comp_bin and duration
+fit_multi3 = lm(log_totalcost ~ ERvisits + comp_bin + duration, data = hd_nv)
+summary(fit_multi3)
+
+# Fit a linear regression with comp_bin and additional variables
+fit_multi4 = lm(log_totalcost ~ ERvisits + comp_bin + duration + gender + age, data = hd_nv)
+summary(fit_multi4)
+
+# Calculate the variance inflation factor (VIF)
+vif(fit_multi4)
+```
+
+__Comment__
+
+From the results above, we can see that, there is a strong significant that coefficient estimator of `duration` is not zero. By adding `duration`, the `Adjusted R-squared` increased from `0.1361` in `fit_multi` to `0.2589` in `fit_multi3`. Therefore, we should adjust the model for `duration`.
+
+For `gender`, we don't have strong evidence to reject coefficient esitmator is zero. Therefore, we will not take it as a predictor. 
+
+We can also adjust the model for `age` as in `fit_multi4`, pval < 0.05 and it's statistically significant that the coefficient estimator is non-zero. However, we may not want to do that because by adding `age` as a predictor, we got lower `Adjusted R-squared` from `0.1361` in `fit_multi` to `0.1356` in `fit_multi1`.
+
+#### ii) Compare the SLR and MLR models. Which model would you use to address the investigator’s objective and why? 
+
+```{r, fig.height = 10}
+# Fit a linear regression with comp_bin and duration
+fit_multi3 = lm(log_totalcost ~ ERvisits + comp_bin + duration, data = hd_nv)
+summary(fit_multi3)
+
+par(mfrow=c(2,2))
+plot(fit_multi3)
+```
+
+__Answer__
+
+I would use the MLR model with `ERvisits`, `comp_bin`, and `duration`.
+
+First, the `Adjusted R-squared` values are increased by adding these covariates. 
+
+Second, the p-value for each preditor are low enough, which indicates terms are statistically significant. 
+
+Third, the _Residuals vs Fitted_ plot is reasonable with residual values bounce around 0.
+
+### Problem 3
+
+A hospital administrator wishes to test the relationship between ‘patient’s satisfaction’ (Y) and ‘age’, ‘severity of illness’, and ‘anxiety level’ (data ‘PatSatisfaction.xlsx’). The administrator randomly selected 46 patients, collected the data, and asked for your help with the analysis.
+a) Create a correlation matrix and interpret your initial findings. (2p)
+b) Fit a multiple regression model and test whether there is a regression relation. State the hypotheses, decision rule and conclusion. (3p)
+c) Show the regression results for all estimated coefficients with 95% CIs. Interpret the coefficient and 95% CI associated with ‘severity of illness’. (5p)
+d) Obtain an interval estimate for a new patient’s satisfaction when Age=35, Severity=42, Anxiety=2.1. Interpret the interval. (2p)
+e) Test whether ‘anxiety level’ can be dropped from the regression model, given the other two covariates are retained. State the hypotheses, decision rule and conclusion. (3p)
