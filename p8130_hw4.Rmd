@@ -8,7 +8,6 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(fig.width = 10)
 library(tidyverse)
-library(kableExtra)
 library(patchwork)
 library(broom)
 library(faraway)
@@ -34,12 +33,12 @@ There are `r nrow(hd_data)` observations and `r ncol(hd_data)` variables in the 
 
 Variables include: `r names(hd_data)`
 
-* `id` : patient identification number
-* `totalcost`: total cost (in dollars) of patients diagnosed with heart disease
-* `age` : the age of patient
-* `gender` : the gender of patient, 
-* `intervetions` : number of interventions for a patient
-* `drugs` : number of drugs a patient took
+* `id` : subscribers identification number from 1-788
+* `totalcost`: total cost (in dollars) of subscribers diagnosed with heart disease
+* `age` : the age of subscribers
+* `gender` : the gender of subscribers, 1 if male, 0 otherwise
+* `intervetions` : number of interventions carried out
+* `drugs` : number of tracked drugs prescribed
 * `ERvisits` : number of emergency room visits
 * `complications` : number of complications
 * `comorbidities` : number of comorbidities
@@ -54,17 +53,17 @@ __Look at the data__
 * `gender` is a categorical variable
 
 ```{r categorical variable summery}
-skimr::skim_to_wide(hd_gender) %>% knitr::kable() %>% kable_styling()
+skimr::skim_to_wide(hd_gender) %>% knitr::kable() 
 
-table(hd_gender) %>% prop.table() %>% knitr::kable() %>% kable_styling(full_width = F, position = "left")
+table(hd_gender) %>% prop.table()  
 ```
 
-From the tables above, we can know the distribution between two gender catagories is uneven. More than 77% of the patients are in the catagory of `0`. Further information about what gender `0` and `1` represent is needed in order to know which gender is under-represented in the dataset.
+From the tables above, we can know the distribution between two gender catagories is uneven. More than 77% of the patients are in the catagory of `0`, which means males are under-represented in this dataset. 
 
 * There 9 continuous variables, which are presented in the table below: 
 
 ```{r continuous variables summery}
-skimr::skim_to_wide(hd_num) %>% kable() %>% kable_styling()
+skimr::skim_to_wide(hd_num) %>% knitr::kable()
 ```
 
 From the table above, 
@@ -98,8 +97,9 @@ tc_qq = hd_data %>%
 Let's try different transformations.
 
 ```{r totalcost transformation}
-totalcost_trans = hd_data %>% 
-  mutate(totalcost, log_totalcost = log(totalcost + 1)) 
+totalcost_trans = hd_data %>%  
+  mutate(totalcost = replace(totalcost, totalcost== 0, 0.01)) %>% 
+  mutate(totalcost, log_totalcost = log(totalcost + 0.01)) 
 
 tc_trans_hist = totalcost_trans %>% 
   ggplot(aes(x = log_totalcost)) +
@@ -113,7 +113,7 @@ tc_trans_qq = totalcost_trans %>%
 
 ```
 
-_Notes_: As we have three `0` observations in variable `totalcost`, we transform the `totalcost` with $log (x+1)$.
+_Notes_: As we have three `0` observations in variable `totalcost`, we add a small value `0.01` to those observations and transform the `totalcost` with $log (x)$.
 
 Compare before and after transformation
 
@@ -137,7 +137,7 @@ hd_nv = totalcost_trans %>%
 
 #### d) Based on our decision in part b), fit a simple linear regression (SLR) between the original or transformed ‘total cost’ and predictor ‘ERvisits’. This includes a scatterplot and results of the regression, with appropriate comments on significance and interpretation of the slope. 
 
-__fit simple linear model__
+__Fit Simple Linear Model__
 
 We transformed $Y_{i}$ to $logY_{i}$. 
 
@@ -166,11 +166,11 @@ totalcost_trans %>%
 
 From the table above,  
 
-$\hat{\beta_0^*} = 5.527, \hat{\beta_{1}} = 0.225$ 
+$\hat{\beta_0^*} = 5.504, \hat{\beta_{1}} = 0.225$ 
 
 The estimate regression model is 
 
-$\hat{logY_{i}} = 5.527 + 0.225X_{i}$ 
+$\hat{logY_{i}} = 5.504 + 0.225X_{i}$ 
 
 __Comments__: There is an increase of 0.225 in logarithm of total cost for every Emergency Room visit. When there is no Emergency Room visit which is `0` in `ERvisit`, the logarithm of total cost is 5.527. 
 
@@ -200,7 +200,7 @@ The effect of `comp_bin` and the effect of `ERvisits` are dependent on one anoth
 
 
 From question d), we got the SLR model of `log_totalcost` and `ERvisits`, which is 
-$\hat{logY_{i}} = 5.527 + 0.225X_{i}$
+$\hat{logY_{i}} = 5.504 + 0.225X_{i}$
 
 Let compute the parameter estimate for which adjust for `ERvisits` which adjusts for potential confounder `comp_bin`.
 
@@ -244,68 +244,80 @@ Therefore, we need to include `comp_bin` along with `ERvisits`.
 #### i) Fit a MLR, show the regression results and comment.
 
 ```{r}
-# Fit a simple linear regression 
-fit = lm(log_totalcost ~ ERvisits, data = totalcost_trans)
-summary(fit)
-
 # Fit a linear regression with comp_bin
 fit_multi = lm(log_totalcost ~ ERvisits + comp_bin, data = hd_nv)
 summary(fit_multi)
 
-# Fit a linear regression with comp_bin and age
-fit_multi1 = lm(log_totalcost ~ ERvisits + comp_bin + age, data = hd_nv)
-summary(fit_multi1)
-
-# Fit a linear regression with comp_bin and gender
-fit_multi2 = lm(log_totalcost ~ ERvisits + comp_bin + gender, data = hd_nv)
-summary(fit_multi2)
+# Fit a linear regression with comp_bin and all additional covariates
+fit_multiadd = lm(log_totalcost ~ ERvisits + comp_bin + duration + age + gender, data = hd_nv)
+summary(fit_multiadd)
 
 # Fit a linear regression with comp_bin and duration
-fit_multi3 = lm(log_totalcost ~ ERvisits + comp_bin + duration, data = hd_nv)
-summary(fit_multi3)
+fit_multi_d = lm(log_totalcost ~ ERvisits + comp_bin + duration, data = hd_nv)
+summary(fit_multi_d)
 
-# Fit a linear regression with comp_bin and additional variables
-fit_multi4 = lm(log_totalcost ~ ERvisits + comp_bin + duration + gender + age, data = hd_nv)
-summary(fit_multi4)
-
-# Calculate the variance inflation factor (VIF)
-vif(fit_multi4)
 ```
 
 __Comment__
 
-From the results above, we can see that, there is a strong significant that coefficient estimator of `duration` is not zero. By adding `duration`, the `Adjusted R-squared` increased from `0.1361` in `fit_multi` to `0.2589` in `fit_multi3`. Therefore, we should adjust the model for `duration`.
-
-For `gender`, we don't have strong evidence to reject coefficient esitmator is zero. Therefore, we will not take it as a predictor. 
-
-We can also adjust the model for `age` as in `fit_multi4`, pval < 0.05 and it's statistically significant that the coefficient estimator is non-zero. However, we may not want to do that because by adding `age` as a predictor, we got lower `Adjusted R-squared` from `0.1361` in `fit_multi` to `0.1356` in `fit_multi1`.
+From the results above, a small p-value indicates a strong evidence to show that the coefficient estimators of `ERvisits`, `comp_bin` and `duration` are not zero. By looking at the `Adjusted R-squared`, adding `duration` actually improves the model.
 
 #### ii) Compare the SLR and MLR models. Which model would you use to address the investigator’s objective and why? 
 
+Compare the models
+
 ```{r, fig.height = 10}
-# Fit a linear regression with comp_bin and duration
-fit_multi3 = lm(log_totalcost ~ ERvisits + comp_bin + duration, data = hd_nv)
-summary(fit_multi3)
+anova(fit_multiadd) 
 
 par(mfrow=c(2,2))
-plot(fit_multi3)
+plot(fit_multiadd)
 ```
 
 __Answer__
 
 I would use the MLR model with `ERvisits`, `comp_bin`, and `duration`.
 
-First, the `Adjusted R-squared` values are increased by adding these covariates. 
+First, the `F value` for `ERvisits`, `comp_bin` and `duration` are the highest three among all. 
 
-Second, the p-value for each preditor are low enough, which indicates terms are statistically significant. 
-
+Second, the p-value is low enough, which indicates coefficient estimators are not equal to zero. 
 Third, the _Residuals vs Fitted_ plot is reasonable with residual values bounce around 0.
 
 ### Problem 3
 
 A hospital administrator wishes to test the relationship between ‘patient’s satisfaction’ (Y) and ‘age’, ‘severity of illness’, and ‘anxiety level’ (data ‘PatSatisfaction.xlsx’). The administrator randomly selected 46 patients, collected the data, and asked for your help with the analysis.
-a) Create a correlation matrix and interpret your initial findings. (2p)
-b) Fit a multiple regression model and test whether there is a regression relation. State the hypotheses, decision rule and conclusion. (3p)
+
+#### a) Create a correlation matrix and interpret your initial findings.
+
+```{r import data}
+patsat = readxl::read_excel("./data/PatSatisfaction.xlsx") %>% 
+  janitor::clean_names() %>% 
+  mutate(satisfaction = safisfaction) %>% 
+  select(satisfaction, age, severity, anxiety)
+
+cor(patsat)
+pairs(patsat)
+```
+__Initial Findings__
+
+The following variables have positive correlation:
+
+`Severity` and `Age`
+
+`Anxiety` and `Age`
+
+`Severity` and `Anxiety`.
+
+`Age`, `Severity` and `Anxiety` all have negative correlation with `Satisfaction`.
+
+#### b) Fit a multiple regression model and test whether there is a regression relation. State the hypotheses, decision rule and conclusion. 
+
+```{r p3 mlr}
+patsat_fit = lm(satisfaction ~ age + severity + anxiety, data = patsat)
+
+summary(patsat_fit)
+```
+
+
 c) Show the regression results for all estimated coefficients with 95% CIs. Interpret the coefficient and 95% CI associated with ‘severity of illness’. (5p)
 d) Obtain an interval estimate for a new patient’s satisfaction when Age=35, Severity=42, Anxiety=2.1. Interpret the interval. (2p)
 e) Test whether ‘anxiety level’ can be dropped from the regression model, given the other two covariates are retained. State the hypotheses, decision rule and conclusion. (3p)
